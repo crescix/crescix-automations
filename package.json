@@ -1,0 +1,17 @@
+{
+  "name": "test-meta-api",
+  "version": "1.0.0",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mysql2": "^3.9.7",
+    "openai": "^4.30.0",
+    "@ngrok/ngrok": "^1.4.1"
+  }
+}
