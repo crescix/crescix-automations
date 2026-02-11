@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
-const webhookRoutes = require('./routes/webhook');
+const webhookRoutes = require('./src/routes/webhook');
 
 const app = express();
 app.use(bodyParser.json({ limit: '50mb' })); // Aumentado para suportar Base64 de áudio
