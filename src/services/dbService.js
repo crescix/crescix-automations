@@ -1,40 +1,33 @@
 const { Pool } = require('pg');
 
+// Configuração do pool de conexões usando as variáveis de ambiente do Easypanel
 const pool = new Pool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
     port: 5432,
+    max: 20, 
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 2000,
 });
 
-async function savePedidoComValores(remoteJid, pushName, rascunho, dadosEstruturados) {
-    const { item, qtd } = dadosEstruturados;
-
+/**
+ * SALVAR PEDIDO: Registra a venda na tabela pedidos_crescix para estatísticas
+ */
+async function savePedido(whatsapp_id, nome, detalhes) {
+    const query = `
+        INSERT INTO pedidos_crescix (whatsapp_id, nome_cliente, detalhes, data_pedido)
+        VALUES ($1, $2, $3, NOW());
+    `;
+    
     try {
-        // Busca o preço unitário definido no sistema para aquele item
-        const prodRes = await pool.query(
-            "SELECT preco FROM produtos WHERE nome ILIKE $1 LIMIT 1",
-            [`%${item}%`]
-        );
-
-        if (prodRes.rows.length === 0) throw new Error("Produto não cadastrado no sistema.");
-
-        const precoUnitario = prodRes.rows[0].preco;
-        const valorTotal = precoUnitario * qtd;
-
-        const query = `
-            INSERT INTO pedidos_crescix (whatsapp_id, nome_cliente, detalhes, valor_total, data_pedido)
-            VALUES ($1, $2, $3, $4, NOW())
-            RETURNING id;
-        `;
-        
-        const res = await pool.query(query, [remoteJid, pushName, `${qtd}x ${item}`, valorTotal]);
-        return { id: res.rows[0].id, total: valorTotal };
+        await pool.query(query, [whatsapp_id, nome, detalhes]);
+        console.log(`🚀 SUCESSO: Dados de ${nome} salvos no banco de dados da CrescIX.`);
     } catch (err) {
-        console.error('❌ Erro no banco:', err.message);
-        throw err;
+        console.error('❌ ERRO AO INSERIR NO POSTGRES:', err.message);
+        throw err; 
     }
 }
 
-module.exports = { savePedidoComValores };
+module.exports = { savePedido };

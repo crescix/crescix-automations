@@ -17,13 +17,10 @@ async function transcribeAudio(base64Data) {
 async function classifyIntent(message) {
     const response = await openai.chat.completions.create({
         model: "gpt-4o-mini",
-        messages: [
-            { 
-                role: "system", 
-                content: "Sua única função é classificar. Se o usuário disser SIM ou qualquer variação de concordância (ok, pode ser, confirma), responda APENAS: CONFIRMADO. Caso contrário, responda: CORRECAO." 
-            },
-            { role: "user", content: message }
-        ],
+        messages: [{
+            role: "system",
+            content: "Você é um validador. Se o usuário confirmar (disser sim, ok, pode ser, confirma), responda APENAS: CONFIRMADO. Se ele negar ou quiser mudar algo, responda: CORRECAO."
+        }, { role: "user", content: message }],
         temperature: 0,
     });
     return response.choices[0].message.content.trim().toUpperCase();

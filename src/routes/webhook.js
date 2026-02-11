@@ -1,5 +1,5 @@
-const express = require('express'); // ESTA LINHA É OBRIGATÓRIA
-const router = express.Router();    // ESTA LINHA DEFINE O ROUTER
+const express = require('express');
+const router = express.Router();
 const whatsapp = require('../services/whatsappService');
 const openai = require('../services/openaiService');
 const redis = require('../services/redisService');
@@ -21,12 +21,14 @@ router.post("/", async (req, res) => {
         if (status === "aguardando_confirmacao") {
             const intent = await openai.classifyIntent(userMessage);
 
-            if (intent === "CONFIRMADO") {
+            // Mudamos para .includes() para ser mais flexível com a resposta da IA
+            if (intent.includes("CONFIRMADO")) {
                 const rascunho = await redis.getDraft(remoteJid);
-                // SALVA EXATAMENTE O QUE O CLIENTE FALOU
+                
+                // Grava no banco usando os nomes de colunas do seu DbGate
                 await db.savePedido(remoteJid, pushName, rascunho);
                 
-                await whatsapp.sendMessage(remoteJid, "✅ Confirmado! Dados registrados no banco da CrescIX.");
+                await whatsapp.sendMessage(remoteJid, "✅ Confirmado! O pedido foi salvo com sucesso.");
                 await redis.clearAll(remoteJid);
             } else {
                 await whatsapp.sendMessage(remoteJid, "❌ Cancelado. O rascunho foi descartado.");
@@ -44,13 +46,12 @@ router.post("/", async (req, res) => {
                 await redis.saveDraft(remoteJid, conteudo);
                 await redis.setStatus(remoteJid, "aguardando_confirmacao");
 
-                // Prompts literais como no n8n
                 await whatsapp.sendMessage(remoteJid, `🤖Transcrição: "${conteudo}"\n\nDeseja confirmar?`);
                 await whatsapp.sendMessage(remoteJid, "👉 Digite: *Sim* ou *Não*");
             }
         }
     } catch (e) {
-        console.error("❌ Erro Webhook:", e.message);
+        console.error("❌ Erro no Webhook:", e.message);
     }
 });
 
