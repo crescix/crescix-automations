@@ -14,17 +14,18 @@ async function transcribeAudio(base64Data) {
     return transcription.text;
 }
 
-// Prompt idêntico ao "AI Agent1" do seu n8n
 async function classifyIntent(message) {
     const response = await openai.chat.completions.create({
         model: "gpt-4o-mini",
-        messages: [{
-            role: "system",
-            content: "Você é um assistente de validação. Se o usuário confirmar (disser 'Sim', 'Ok', 'Correto', 'Pode ser', etc.), responda APENAS: CONFIRMADO. Se o usuário corrigir ou mandar um novo texto, responda APENAS: CORRECAO."
-        }, { role: "user", content: message }],
+        messages: [
+            { 
+                role: "system", 
+                content: "Sua única função é classificar. Se o usuário disser SIM ou qualquer variação de concordância (ok, pode ser, confirma), responda APENAS: CONFIRMADO. Caso contrário, responda: CORRECAO." 
+            },
+            { role: "user", content: message }
+        ],
         temperature: 0,
     });
-    // Limpa a resposta para evitar espaços ou pontos extras
     return response.choices[0].message.content.trim().toUpperCase();
 }
 
