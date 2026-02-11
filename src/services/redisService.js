@@ -1,18 +1,21 @@
 const { createClient } = require('redis');
 
+// Configuração do cliente usando a variável de ambiente do Easypanel
 const client = createClient({
-    // No Easypanel, use a URL interna do serviço Redis
     url: process.env.REDIS_URL || 'redis://localhost:6379'
 });
 
-client.on('error', (err) => console.log('Redis Client Error', err));
+client.on('error', (err) => console.log('❌ Erro no Cliente Redis:', err));
 
+// Conexão assíncrona obrigatória na v4 do node-redis
 (async () => {
-    await client.connect();
+    if (!client.isOpen) {
+        await client.connect();
+    }
 })();
 
 /**
- * HISTÓRICO: Mantém o contexto para o Agente de IA
+ * HISTÓRICO: Gerencia o contexto da conversa para a IA
  */
 async function getHistory(chatId) {
     const data = await client.get(`history:${chatId}`);
@@ -23,24 +26,23 @@ async function saveMessage(chatId, userContent, aiContent) {
     const history = await getHistory(chatId);
     history.push({ role: "user", content: userContent });
     history.push({ role: "assistant", content: aiContent });
+    
+    // Mantém apenas as últimas 10 mensagens para economia de tokens
     const updatedHistory = history.slice(-10); 
-    await client.set(`history:${chatId}`, JSON.stringify(updatedHistory), { EX: 86400 });
+    await client.set(`history:${chatId}`, JSON.stringify(updatedHistory), { EX: 86400 }); // Expira em 24h
 }
 
 /**
- * STATUS E RASCUNHOS: Substitui a lógica de "Aguardando Confirmação" do n8n
+ * ESTADOS E RASCUNHOS: Fluxo de confirmação da CrescIX
  */
-
-// Define o estado da conversa (ex: 'aguardando_confirmacao')
 async function setStatus(chatId, status) {
-    await client.set(`status:${chatId}`, status, { EX: 1800 }); // Expira em 30 min
+    await client.set(`status:${chatId}`, status, { EX: 1800 }); // 30 min
 }
 
 async function getStatus(chatId) {
     return await client.get(`status:${chatId}`);
 }
 
-// Salva a transcrição temporária para ser gravada no Postgres após o "Sim"
 async function saveDraft(chatId, text) {
     await client.set(`draft:${chatId}`, text, { EX: 1800 });
 }
@@ -49,14 +51,13 @@ async function getDraft(chatId) {
     return await client.get(`draft:${chatId}`);
 }
 
-// Limpa tudo após salvar no banco de dados
+// Limpa o rascunho e o status após o pedido ir para o Postgres
 async function clearAll(chatId) {
-    await client.del(`status:${chatId}`);
-    await client.del(`draft:${chatId}`);
+    await client.del([`status:${chatId}`, `draft:${chatId}`, `lock:${chatId}`]);
 }
 
 /**
- * TRAVAS: Segurança contra mensagens duplicadas simultâneas
+ * TRAVAS (LOCKS): O "Escudo" contra Webhook Retries
  */
 async function isLocked(chatId) {
     const lock = await client.get(`lock:${chatId}`);
@@ -64,17 +65,16 @@ async function isLocked(chatId) {
 }
 
 async function setLock(chatId, status) {
-    await client.set(`lock:${chatId}`, status.toString(), { EX: 60 });
+    if (status === true) {
+        // Ativa a trava por segurança (expira em 60s se o servidor cair)
+        await client.set(`lock:${chatId}`, 'true', { EX: 60 });
+    } else {
+        // Remove a trava IMEDIATAMENTE após o fim do processamento
+        await client.del(`lock:${chatId}`);
+    }
 }
 
 module.exports = { 
-    getHistory, 
-    saveMessage, 
-    isLocked, 
-    setLock, 
-    setStatus, 
-    getStatus, 
-    saveDraft, 
-    getDraft, 
-    clearAll 
+    getHistory, saveMessage, isLocked, setLock, 
+    setStatus, getStatus, saveDraft, getDraft, clearAll 
 };

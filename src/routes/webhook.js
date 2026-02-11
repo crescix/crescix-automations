@@ -18,11 +18,17 @@ router.post('/', async (req, res) => {
 
         const remoteJid = data.key.remoteJid;
         const pushName = data.pushName || 'Cliente';
-        const userMessage = data.message?.conversation || "";
+        
+        // Captura o texto de diferentes formatos da Evolution API
+        const userMessage = data.message?.conversation || 
+                            data.message?.extendedTextMessage?.text || "";
         const messageType = data.messageType;
 
         // 3. Trava de segurança para evitar processar a mesma mensagem várias vezes
-        if (await redis.isLocked(remoteJid)) return;
+        if (await redis.isLocked(remoteJid)) {
+            console.log(`⚠️ Mensagem duplicada ignorada para: ${remoteJid}`);
+            return;
+        }
         await redis.setLock(remoteJid, true);
 
         const status = await redis.getStatus(remoteJid);
@@ -46,11 +52,13 @@ router.post('/', async (req, res) => {
             await redis.setStatus(remoteJid, 'aguardando_confirmacao');
             await whatsapp.sendMessage(remoteJid, `📝 *Transcrição:* "${transcricao}"\n\nDeseja confirmar? (Sim/Não)`);
         } else {
-            // Fluxo de texto comum com IA
-            const history = await redis.getHistory(remoteJid);
-            const aiResponse = await openai.chatWithAgent(userMessage, history);
-            await whatsapp.sendMessage(remoteJid, aiResponse);
-            await redis.saveMessage(remoteJid, userMessage, aiResponse);
+            // Fluxo de texto comum com IA (Restaurando personalidade)
+            if (userMessage.length > 0) {
+                const history = await redis.getHistory(remoteJid);
+                const aiResponse = await openai.chatWithAgent(userMessage, history);
+                await whatsapp.sendMessage(remoteJid, aiResponse);
+                await redis.saveMessage(remoteJid, userMessage, aiResponse);
+            }
         }
 
         // 4. Libera a trava após o processamento completo
@@ -58,6 +66,7 @@ router.post('/', async (req, res) => {
 
     } catch (error) {
         console.error("❌ Erro no processamento assíncrono:", error);
+        // Garante que a trava seja liberada em caso de erro para não travar o usuário
         const remoteJid = req.body.data?.key?.remoteJid;
         if (remoteJid) await redis.setLock(remoteJid, false);
     }

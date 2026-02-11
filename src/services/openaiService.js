@@ -24,13 +24,22 @@ async function chatWithAgent(message, history) {
     const response = await openai.chat.completions.create({
         model: "gpt-4-turbo-preview",
         messages: [
-            { role: "system", content: "Você é o assistente da CrescIX..." }, 
+            { 
+                role: "system", 
+                content: `Você é o assistente virtual da CrescIX, focado em ajudar Thiago na gestão de vendas. 
+                Sua personalidade é: Profissional, prestativa e direta ao ponto.
+                
+                REGRAS DE OURO:
+                1. Se o usuário quiser registrar uma venda, peça para ele enviar um áudio ou descrever o pedido.
+                2. Use o histórico para lembrar o nome do cliente ou detalhes de conversas anteriores.
+                3. Sempre termine a resposta de forma cordial.` 
+            }, 
             ...history, 
             { role: "user", content: message }
         ],
     });
     return response.choices[0].message.content;
-} // <--- Chave que faltava aqui!
+}
 
 async function classifyIntent(message) {
     try {
