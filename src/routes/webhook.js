@@ -51,13 +51,15 @@ router.post("/", async (req, res) => {
                 await redis.setStatus(remoteJid, "aguardando_confirmacao");
 
                 // Envio em mensagens separadas
-                await whatsapp.sendMessage(remoteJid, `🤖 Transcrição: "${conteudo}\nDeseja confirmar?"`);
+                await whatsapp.sendMessage(remoteJid, `🤖 Transcrição: "${conteudo}"\n\nDeseja confirmar?`);
                 await whatsapp.sendMessage(remoteJid, `👉 Digite: *Sim* ou *Não*`);
             }
         }
 
         await redis.setLock(remoteJid, false);
     } catch (error) {
+        // MUITO IMPORTANTE: Isso vai mostrar o erro real no log do Easypanel
+        console.error("❌ Erro Crítico no Webhook:", error.message);
         const remoteJid = req.body.data?.key?.remoteJid;
         if (remoteJid) await redis.setLock(remoteJid, false);
     }
