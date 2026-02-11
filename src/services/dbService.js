@@ -1,10 +1,10 @@
 const { Pool } = require('pg');
 
-// O Pool gerencia as conexões automaticamente
+// Configuração do pool usando as variáveis do seu Easypanel
 const pool = new Pool({
     host: process.env.DB_HOST,
-    user: process.env.DB_USER,      // Verifique se no Easypanel está 'postgres' ou 'crescix'
-    password: process.env.DB_PASSWORD, // O erro está vindo daqui
+    user: process.env.DB_USER,      
+    password: process.env.DB_PASSWORD, // O ERRO ESTÁ AQUI NO ENV
     database: process.env.DB_NAME,
     port: 5432,
     max: 20,
@@ -13,7 +13,7 @@ const pool = new Pool({
 });
 
 /**
- * SALVAR PEDIDO: Insere os dados na tabela pedidos_crescix
+ * SALVAR PEDIDO: Registra a venda na tabela pedidos_crescix
  */
 async function savePedido(whatsapp_id, nome, detalhes) {
     const query = `
@@ -25,7 +25,7 @@ async function savePedido(whatsapp_id, nome, detalhes) {
         await pool.query(query, [whatsapp_id, nome, detalhes]);
         console.log(`🚀 SUCESSO: O pedido de ${nome} foi gravado no banco.`);
     } catch (err) {
-        // Este log vai te mostrar o erro de autenticação se persistir
+        // Log detalhado para sabermos se o erro de senha continua
         console.error('❌ ERRO AO INSERIR NO POSTGRES:', err.message);
         throw err; 
     }
