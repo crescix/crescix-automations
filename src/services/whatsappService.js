@@ -1,24 +1,26 @@
 const axios = require('axios');
 
-/**
- * Envia mensagem de texto para o usuário via API externa
- */
-async function sendMessage(to, text) {
+async function sendMessage(number, body) {
     try {
-        const response = await axios.post(`${process.env.WHATSAPP_API_URL}/messages/send`, {
-            number: to,
-            body: text
+        // Remove caracteres não numéricos do telefone
+        const cleanNumber = number.replace(/\D/g, '');
+        
+        // A URL correta precisa do caminho /message/sendText/NOME_DA_INSTANCIA
+        const url = `${process.env.WHATSAPP_API_URL}/message/sendText/Crescix`;
+        
+        const response = await axios.post(url, {
+            number: cleanNumber,
+            text: body // A Evolution espera 'text' em vez de 'body' no JSON
         }, {
             headers: {
-                'Authorization': `Bearer ${process.env.WHATSAPP_TOKEN}`,
+                'apikey': process.env.WHATSAPP_TOKEN,
                 'Content-Type': 'application/json'
             }
         });
-        
-        console.log(`Mensagem enviada para ${to}`);
+
         return response.data;
     } catch (error) {
-        console.error("Erro ao enviar mensagem para o WhatsApp:", error.response?.data || error.message);
+        console.error("❌ Erro ao enviar mensagem via WhatsApp:", error.response?.data || error.message);
         throw error;
     }
 }
