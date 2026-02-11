@@ -16,6 +16,9 @@ router.post("/", async (req, res) => {
         const pushName = data.pushName || "Cliente";
         const userMessage = data.message?.conversation || data.message?.extendedTextMessage?.text || "";
 
+        if (await redis.isLocked(remoteJid)) return;
+        await redis.setLock(remoteJid, true);
+
         const status = await redis.getStatus(remoteJid);
 
         if (status === "aguardando_confirmacao") {
@@ -23,14 +26,12 @@ router.post("/", async (req, res) => {
 
             if (intent.includes("CONFIRMADO")) {
                 const rascunho = await redis.getDraft(remoteJid);
+                const dadosIA = await openai.extrairDadosVenda(rascunho); // IA entende o item
                 
-                // IA entende o que foi vendido
-                const dadosVenda = await openai.extrairDadosVenda(rascunho);
+                // CORREÇÃO: Chamando o nome exato que está no dbService.js
+                const resultado = await db.processarVendaAutomatica(remoteJid, pushName, rascunho, dadosIA);
                 
-                // Banco processa valores e estoque
-                const resultado = await db.processarVendaComEstoque(remoteJid, pushName, rascunho, dadosVenda);
-                
-                await whatsapp.sendMessage(remoteJid, `✅ Venda Confirmada!\n💰 Total: R$ ${resultado.total.toFixed(2)}\n📦 Estoque atualizado: ${resultado.estoqueRestante} unid.`);
+                await whatsapp.sendMessage(remoteJid, `✅ Venda Processada!\n💰 Total: R$ ${resultado.total.toFixed(2)}\n📦 Estoque: ${resultado.novoEstoque} unid.`);
                 await redis.clearAll(remoteJid);
             } else {
                 await whatsapp.sendMessage(remoteJid, "❌ Cancelado. O rascunho foi descartado.");
@@ -38,7 +39,8 @@ router.post("/", async (req, res) => {
             }
         } else {
             let conteudo = "";
-            if (data.messageType === "audioMessage") {
+            // Trava para evitar erro de 'undefined' no Buffer
+            if (data.messageType === "audioMessage" && data.message.audioMessage?.base64) {
                 conteudo = await openai.transcribeAudio(data.message.audioMessage.base64);
             } else if (userMessage.length > 0) {
                 conteudo = userMessage;
@@ -47,13 +49,15 @@ router.post("/", async (req, res) => {
             if (conteudo) {
                 await redis.saveDraft(remoteJid, conteudo);
                 await redis.setStatus(remoteJid, "aguardando_confirmacao");
-
                 await whatsapp.sendMessage(remoteJid, `🤖Transcrição: "${conteudo}"\n\nDeseja confirmar?`);
                 await whatsapp.sendMessage(remoteJid, "👉 Digite: *Sim* ou *Não*");
             }
         }
+        await redis.setLock(remoteJid, false);
     } catch (e) {
         console.error("❌ Erro no Webhook:", e.message);
+        const remoteJid = req.body.data?.key?.remoteJid;
+        if (remoteJid) await redis.setLock(remoteJid, false);
     }
 });
 

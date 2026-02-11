@@ -31,7 +31,7 @@ async function extrairDadosVenda(texto) {
         model: "gpt-4o-mini",
         messages: [{
             role: "system",
-            content: "Sua função é extrair dados de venda. Retorne APENAS um JSON: { \"item\": string, \"qtd\": number }. Exemplo: 'vendi 3 águas' -> { \"item\": \"água\", \"qtd\": 3 }"
+            content: "Retorne APENAS um JSON: { \"item\": string, \"qtd\": number }. Ex: '3 águas' -> { \"item\": \"água\", \"qtd\": 3 }"
         }, { role: "user", content: texto }],
         response_format: { type: "json_object" }
     });
