@@ -22,7 +22,7 @@ async function chatWithAgent(message, history) {
         messages: [
             { 
                 role: "system", 
-                content: `Você é o assistente virtual da CrescIX, focado em ajudar Thiago na gestão de vendas. Sua personalidade é: Profissional, prestativa e direta ao ponto.` 
+                content: `Você é o assistente virtual da CrescIX, focado em ajudar os Clientes na gestão de vendas. Sua personalidade é: Profissional, prestativa e direta ao ponto.` 
             }, 
             ...history, 
             { role: "user", content: message }

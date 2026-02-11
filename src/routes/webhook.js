@@ -51,8 +51,8 @@ router.post("/", async (req, res) => {
                 await redis.setStatus(remoteJid, "aguardando_confirmacao");
 
                 // Envio em mensagens separadas
-                await whatsapp.sendMessage(remoteJid, `🤖 Transcrição: "${conteudo}"`);
-                await whatsapp.sendMessage(remoteJid, `Deseja confirmar?\n\n👉 Digite: *Sim* ou *Não*`);
+                await whatsapp.sendMessage(remoteJid, `🤖 Transcrição: "${conteudo}\nDeseja confirmar?"`);
+                await whatsapp.sendMessage(remoteJid, `👉 Digite: *Sim* ou *Não*`);
             }
         }
 
