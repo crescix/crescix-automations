@@ -1,31 +1,35 @@
 const { Pool } = require('pg');
 
-// Configuração de conexão usando as variáveis do seu Easypanel
+// Configuração do pool de conexões usando as variáveis do Easypanel
 const pool = new Pool({
-    host: process.env.DB_HOST || 'postrgres', // Nome do serviço no Easypanel
-    user: process.env.DB_USER || 'postgres',
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME || 'crescix', // Nome do banco que criamos
+    database: process.env.DB_NAME,
     port: 5432,
+    max: 20, // Máximo de conexões simultâneas
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 2000,
 });
 
 /**
- * Salva o pedido final na tabela pedidos_crescix
+ * SALVAR PEDIDO: Mapeia os dados do bot para a tabela pedidos_crescix
  */
-async function savePedido(telefone, nome, texto) {
+async function savePedido(remoteJid, pushName, rascunho) {
     const query = `
-        INSERT INTO pedidos_crescix (telefone, nome_cliente, pedido_texto)
-        VALUES ($1, $2, $3)
+        INSERT INTO pedidos_crescix (whatsapp_id, nome_cliente, detalhes, data_pedido)
+        VALUES ($1, $2, $3, NOW())
         RETURNING id;
     `;
-    const values = [telefone, nome, texto];
+    
+    const values = [remoteJid, pushName, rascunho];
 
     try {
         const res = await pool.query(query, values);
-        console.log(`✅ Pedido salvo no banco! ID: ${res.rows[0].id}`);
+        console.log(`✅ Pedido salvo com sucesso! ID: ${res.rows[0].id}`);
         return res.rows[0].id;
     } catch (err) {
-        console.error('❌ Erro ao salvar no Postgres:', err.stack);
+        console.error('❌ Erro ao salvar no banco de dados:', err.stack);
         throw err;
     }
 }
