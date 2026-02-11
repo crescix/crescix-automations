@@ -5,17 +5,13 @@ const path = require('path');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 async function transcribeAudio(base64Data) {
-    // Usando timestamp para evitar conflitos de arquivos simultâneos
     const fileName = `temp_${Date.now()}.ogg`;
     const filePath = path.join(__dirname, '../../', fileName);
-    
     fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
-    
     const transcription = await openai.audio.transcriptions.create({
         file: fs.createReadStream(filePath),
         model: "whisper-1",
     });
-    
     fs.unlinkSync(filePath); 
     return transcription.text;
 }
@@ -26,13 +22,7 @@ async function chatWithAgent(message, history) {
         messages: [
             { 
                 role: "system", 
-                content: `Você é o assistente virtual da CrescIX, focado em ajudar Thiago na gestão de vendas. 
-                Sua personalidade é: Profissional, prestativa e direta ao ponto.
-                
-                REGRAS DE OURO:
-                1. Se o usuário quiser registrar uma venda, peça para ele enviar um áudio ou descrever o pedido.
-                2. Use o histórico para lembrar o nome do cliente ou detalhes de conversas anteriores.
-                3. Sempre termine a resposta de forma cordial.` 
+                content: `Você é o assistente virtual da CrescIX, focado em ajudar Thiago na gestão de vendas. Sua personalidade é: Profissional, prestativa e direta ao ponto.` 
             }, 
             ...history, 
             { role: "user", content: message }
@@ -46,22 +36,27 @@ async function classifyIntent(message) {
         const response = await openai.chat.completions.create({
             model: "gpt-4-turbo-preview",
             messages: [
-                { 
-                    role: "system", 
-                    content: `Você é um classificador de intenções para um sistema de vendas. 
-                    Responda APENAS com: CONFIRMADO ou CORRECAO.` 
-                },
+                { role: "system", content: `Você é um classificador de intenções. Responda APENAS com: CONFIRMADO ou CORRECAO.` },
                 { role: "user", content: message }
             ],
             temperature: 0,
         });
-
-        const intent = response.choices[0].message.content.trim().toUpperCase();
-        return intent;
+        return response.choices[0].message.content.trim().toUpperCase();
     } catch (error) {
-        console.error("❌ Erro na classificação:", error);
         return "CORRECAO";
     }
 }
 
-module.exports = { transcribeAudio, chatWithAgent, classifyIntent };
+async function extractOrderItems(text) {
+    const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{
+            role: "system",
+            content: "Extraia o item e a quantidade. Responda apenas em JSON: { \"item\": string, \"qtd\": number }"
+        }, { role: "user", content: text }],
+        response_format: { type: "json_object" }
+    });
+    return JSON.parse(response.choices[0].message.content);
+}
+
+module.exports = { transcribeAudio, chatWithAgent, classifyIntent, extractOrderItems };
