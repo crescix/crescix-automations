@@ -1,27 +1,18 @@
-const { dispatchText } = require('./src/dispatcher');
-const { initDatabase } = require('./src/database');
+require('dotenv').config();
+const openai = require('./src/services/openaiService');
 
 async function runTest() {
-  console.log("Iniciando teste offline...");
-  const db = await initDatabase();
+    console.log("🚀 Iniciando teste de fluxo da CrescIX...");
 
-  const reply = (text) => {
-    console.log("--- RESPOSTA DO BOT ---");
-    console.log(text);
-    console.log("-----------------------");
-  };
+    // Teste 1: Classificação de Intenção Positiva
+    const sim = await openai.classifyIntent("Sim, pode salvar o pedido");
+    console.log(`Teste 'Sim': ${sim === 'CONFIRMADO' ? '✅ PASSOU' : '❌ FALHOU'} (${sim})`);
 
-  // Teste 1: Despesa
-  await dispatchText(db, { text: "gastei 50 luz", userId: 1, reply });
+    // Teste 2: Classificação de Intenção Negativa/Correção
+    const nao = await openai.classifyIntent("Não, eu quero mudar a quantidade");
+    console.log(`Teste 'Não': ${nao === 'CORRECAO' ? '✅ PASSOU' : '❌ FALHOU'} (${nao})`);
 
-  // Teste 2: Venda
-  await dispatchText(db, { text: "vendi 2 coca por 7.50", userId: 1, reply });
-
-  // Teste 3: Ajuda
-  await dispatchText(db, { text: "ajuda", userId: 1, reply });
-
-  console.log("Teste finalizado!");
-  process.exit(0);
+    console.log("\n🏁 Teste concluído!");
 }
 
 runTest();
