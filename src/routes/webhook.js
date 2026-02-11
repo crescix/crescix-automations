@@ -21,14 +21,16 @@ router.post("/", async (req, res) => {
         if (status === "aguardando_confirmacao") {
             const intent = await openai.classifyIntent(userMessage);
 
-            // Mudamos para .includes() para ser mais flexível com a resposta da IA
             if (intent.includes("CONFIRMADO")) {
                 const rascunho = await redis.getDraft(remoteJid);
                 
-                // Grava no banco usando os nomes de colunas do seu DbGate
-                await db.savePedido(remoteJid, pushName, rascunho);
+                // IA entende o que foi vendido
+                const dadosVenda = await openai.extrairDadosVenda(rascunho);
                 
-                await whatsapp.sendMessage(remoteJid, "✅ Confirmado! O pedido foi salvo com sucesso.");
+                // Banco processa valores e estoque
+                const resultado = await db.processarVendaComEstoque(remoteJid, pushName, rascunho, dadosVenda);
+                
+                await whatsapp.sendMessage(remoteJid, `✅ Venda Confirmada!\n💰 Total: R$ ${resultado.total.toFixed(2)}\n📦 Estoque atualizado: ${resultado.estoqueRestante} unid.`);
                 await redis.clearAll(remoteJid);
             } else {
                 await whatsapp.sendMessage(remoteJid, "❌ Cancelado. O rascunho foi descartado.");

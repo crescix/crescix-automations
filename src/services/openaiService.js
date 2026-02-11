@@ -26,4 +26,16 @@ async function classifyIntent(message) {
     return response.choices[0].message.content.trim().toUpperCase();
 }
 
-module.exports = { transcribeAudio, classifyIntent };
+async function extrairDadosVenda(texto) {
+    const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{
+            role: "system",
+            content: "Sua função é extrair dados de venda. Retorne APENAS um JSON: { \"item\": string, \"qtd\": number }. Exemplo: 'vendi 3 águas' -> { \"item\": \"água\", \"qtd\": 3 }"
+        }, { role: "user", content: texto }],
+        response_format: { type: "json_object" }
+    });
+    return JSON.parse(response.choices[0].message.content);
+}
+
+module.exports = { transcribeAudio, classifyIntent, extrairDadosVenda };
