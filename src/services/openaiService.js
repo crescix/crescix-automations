@@ -14,35 +14,23 @@ async function transcribeAudio(base64Data) {
     return transcription.text;
 }
 
-async function classifyIntent(message) {
-    console.log("🤖 Chamando OpenAI para classificar...");
-    try {
-        const response = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [{
-                role: "system",
-                content: "Classifique a intenção: VENDA, DESPESA, CUSTO, ENTRADA, RELATORIO, ESTOQUE, CADASTRO_PRODUTO, LOGIN. Responda APENAS a palavra."
-            }, { role: "user", content: message }],
-            temperature: 0,
-        });
-        console.log("✅ OpenAI respondeu com sucesso!");
-        return response.choices[0].message.content.trim().toUpperCase();
-    } catch (error) {
-        console.error("❌ Erro na OpenAI:", error.message);
-        throw error;
-    }
-}
+// Instrução para o System Prompt da OpenAI
+const SYSTEM_PROMPT = `
+Você é o núcleo de inteligência da CrescIX, um SaaS para motoristas e pequenos empreendedores.
+Sua missão é transformar falas informais em dados estruturados.
 
-async function extrairDadosFinanceiros(texto) {
-    const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [{
-            role: "system",
-            content: "Extraia item, valor e quantidade. Responda JSON: { \"item\": string, \"valor\": number, \"qtd\": number }. Ex: '3 águas' -> { \"item\": \"água\", \"valor\": 0, \"qtd\": 3 }"
-        }, { role: "user", content: texto }],
-        response_format: { type: "json_object" }
-    });
-    return JSON.parse(response.choices[0].message.content);
-}
+REGRAS DE OURO PARA O 'ITEM':
+1. Sempre no singular (ex: "águas" -> "agua").
+2. Sem artigos ou preposições (ex: "garrafa de água" -> "agua").
+3. Remova acentos para facilitar a busca no banco (ex: "café" -> "cafe").
+4. Se o item for combustível, padronize como "combustivel".
 
-module.exports = { transcribeAudio, classifyIntent, extrairDadosFinanceiros };
+INTENÇÕES DISPONÍVEIS:
+- VENDA: "Vendi 2 cocas", "Saiu mais uma água".
+- ENTRADA: "Chegou 10 fardos de água", "Comprei estoque de refri".
+- CUSTO: "Gastei 50 de diesel", "Paguei o mecânico".
+- ESTOQUE: "Como está o estoque?", "O que eu tenho ainda?".
+- RELATORIO: "Quanto lucrei hoje?", "Resumo do dia".
+`;
+
+module.exports = { transcribeAudio};
