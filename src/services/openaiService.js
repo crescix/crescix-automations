@@ -1,36 +1,37 @@
-const { OpenAI } = require('openai');
+const { OpenAI } = require("openai");
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const fs = require('fs');
-const path = require('path');
 
-async function transcribeAudio(base64Data) {
-    const filePath = path.join(__dirname, '../../', `temp_${Date.now()}.ogg`);
-    fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
-    const transcription = await openai.audio.transcriptions.create({
-        file: fs.createReadStream(filePath),
-        model: "whisper-1",
+// Função para classificar a intenção do motorista
+async function classifyIntent(message) {
+    const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{
+            role: "system",
+            content: `Você é a inteligência da CrescIX. Classifique a mensagem em apenas UMA palavra:
+            VENDA, DESPESA, CUSTO, ENTRADA, ESTOQUE, RELATORIO ou SAUDACAO.
+            Ex: "Vendi 2 águas" -> VENDA | "Quanto tenho?" -> ESTOQUE.`
+        }, { role: "user", content: message }],
+        temperature: 0,
     });
-    fs.unlinkSync(filePath); 
-    return transcription.text;
+    return response.choices[0].message.content.trim().toUpperCase();
 }
 
-// Instrução para o System Prompt da OpenAI
-const SYSTEM_PROMPT = `
-Você é o núcleo de inteligência da CrescIX, um SaaS para motoristas e pequenos empreendedores.
-Sua missão é transformar falas informais em dados estruturados.
+// Função para extrair dados financeiros e NORMALIZAR o item
+async function extrairDadosFinanceiros(message) {
+    const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{
+            role: "system",
+            content: `Extraia: item (singular, sem artigos, sem acentos), valor (número), qtd (número).
+            Ex: "3 Garrafas de água" -> { "item": "agua", "valor": 0, "qtd": 3 }`
+        }, { role: "user", content: message }],
+        response_format: { type: "json_object" },
+    });
+    return JSON.parse(response.choices[0].message.content);
+}
 
-REGRAS DE OURO PARA O 'ITEM':
-1. Sempre no singular (ex: "águas" -> "agua").
-2. Sem artigos ou preposições (ex: "garrafa de água" -> "agua").
-3. Remova acentos para facilitar a busca no banco (ex: "café" -> "cafe").
-4. Se o item for combustível, padronize como "combustivel".
-
-INTENÇÕES DISPONÍVEIS:
-- VENDA: "Vendi 2 cocas", "Saiu mais uma água".
-- ENTRADA: "Chegou 10 fardos de água", "Comprei estoque de refri".
-- CUSTO: "Gastei 50 de diesel", "Paguei o mecânico".
-- ESTOQUE: "Como está o estoque?", "O que eu tenho ainda?".
-- RELATORIO: "Quanto lucrei hoje?", "Resumo do dia".
-`;
-
-module.exports = { transcribeAudio};
+// O erro aconteceu porque faltava exportar as funções aqui!
+module.exports = {
+    classifyIntent,
+    extrairDadosFinanceiros
+};
