@@ -11,48 +11,51 @@ router.post("/", async (req, res) => {
     const event = req.body.event;
     const data = req.body.data;
 
+    // Filtro de segurança para mensagens válidas
     if (event !== 'messages.upsert' || !data?.key || data.key.fromMe) return;
 
     const remoteJid = data.key.remoteJid;
     let userMessage = "";
 
-    // --- SUPORTE PARA ÁUDIO ---
-    if (data.message?.audioMessage) {
-        // A Evolution envia o base64 se a opção "Webhook Base64" estiver ligada
-        const base64Audio = data.message.audioMessage.base64;
-        if (base64Audio) {
-            userMessage = await openai.transcribeAudio(base64Audio);
-        }
-    } else {
-        userMessage = data.message?.conversation || data.message?.extendedTextMessage?.text || "";
-    }
-
-    if (!userMessage) return;
-
     try {
+        // --- PROCESSAMENTO DE ÁUDIO ---
+        if (data.message?.audioMessage) {
+            const base64Audio = data.message.audioMessage.base64;
+            if (base64Audio) {
+                userMessage = await openai.transcribeAudio(base64Audio);
+            }
+        } else {
+            userMessage = data.message?.conversation || data.message?.extendedTextMessage?.text || "";
+        }
+
+        if (!userMessage) return;
+
         if (await redis.isLocked(remoteJid)) return;
         await redis.setLock(remoteJid, true);
 
         await db.verificarOuCadastrarUsuario(remoteJid, data.pushName || "Motorista");
         const status = await redis.getStatus(remoteJid);
 
-        // --- LÓGICA DE CONFIRMAÇÃO (SEM ERROS) ---
+        // --- LÓGICA DE CONFIRMAÇÃO ---
         if (status?.startsWith("aguardando_")) {
             const cleanMsg = userMessage.toLowerCase().trim();
             
-            // Tratamento direto para evitar que a IA cancele o "sim"
             if (['sim', 's', 'confirmar', 'ok'].includes(cleanMsg)) {
                 const tipo = status.replace("aguardando_", "");
                 const rascunho = await redis.getDraft(remoteJid);
                 const dados = await openai.extrairDadosFinanceiros(rascunho);
 
-                if (tipo === "venda") {
-                    const r = await db.processarVendaAutomatica(remoteJid, rascunho, dados);
-                    await whatsapp.sendMessage(remoteJid, `✅ Venda de R$ ${r.total.toFixed(2)} salva!`);
-                    if (r.alerta) await whatsapp.sendMessage(remoteJid, r.alerta);
-                } else {
-                    await db.registrarMovimentacao(remoteJid, tipo, dados);
-                    await whatsapp.sendMessage(remoteJid, `✅ ${tipo.toUpperCase()} registrado!`);
+                try {
+                    if (tipo === "venda") {
+                        const r = await db.processarVendaAutomatica(remoteJid, rascunho, dados);
+                        await whatsapp.sendMessage(remoteJid, `✅ Venda de R$ ${r.total.toFixed(2)} salva!\n📦 Estoque atual: ${r.novoEstoque} un.`);
+                    } else {
+                        await db.registrarMovimentacao(remoteJid, tipo, dados);
+                        await whatsapp.sendMessage(remoteJid, `✅ ${tipo.toUpperCase()} registrado!`);
+                    }
+                } catch (dbError) {
+                    // Avisa o usuário se o produto não existir
+                    await whatsapp.sendMessage(remoteJid, `⚠️ Erro: ${dbError.message}\nUse "Cadastrar produto [nome] por [valor]" primeiro.`);
                 }
                 await redis.clearAll(remoteJid);
             } else if (['não', 'nao', 'n', 'cancelar'].includes(cleanMsg)) {
@@ -62,10 +65,10 @@ router.post("/", async (req, res) => {
             return;
         }
 
-        // --- IDENTIFICAÇÃO DE COMANDOS ---
+        // --- CLASSIFICAÇÃO DE COMANDOS (SEM SAUDAÇÃO) ---
         const intent = await openai.classifyIntent(userMessage);
 
-        if (["VENDA", "DESPESA", "CUSTO", "ENTRADA"].includes(intent)) {
+        if (["VENDA", "DESPESA", "CUSTO", "ENTRADA", "CADASTRO_PRODUTO"].includes(intent)) {
             await redis.saveDraft(remoteJid, userMessage);
             await redis.setStatus(remoteJid, `aguardando_${intent.toLowerCase()}`);
             await whatsapp.sendMessage(remoteJid, `🤖 Confirma registro de **${intent}**? (Sim/Não)`);
@@ -73,17 +76,14 @@ router.post("/", async (req, res) => {
             const itens = await db.consultarEstoque(remoteJid);
             let lista = `📦 *Seu Estoque*\n\n`;
             itens.forEach(p => lista += `${p.estoque <= 5 ? "⚠️" : "✅"} ${p.nome}: ${p.estoque} un.\n`);
-            await whatsapp.sendMessage(remoteJid, lista);
+            await whatsapp.sendMessage(remoteJid, lista.length > 15 ? lista : "📦 Estoque vazio.");
         } else if (intent === "RELATORIO") {
             const r = await db.gerarRelatorioCompleto(remoteJid);
             await whatsapp.sendMessage(remoteJid, `📊 *Resumo*\n💰 Vendas: R$ ${r.venda}\n⚖️ *Saldo: R$ ${r.saldo.toFixed(2)}*`);
-        } else if (intent === "LOGIN") {
-            const codigo = await db.gerarCodigoLogin(remoteJid);
-            await whatsapp.sendMessage(remoteJid, `🔐 Código: *${codigo}*`);
         }
 
     } catch (e) {
-        console.error("Erro:", e.message);
+        console.error("Erro no processamento:", e.message);
     } finally {
         await redis.setLock(remoteJid, false);
     }

@@ -69,10 +69,14 @@ async function consultarEstoque(whatsapp_id) {
 }
 
 async function cadastrarProduto(whatsapp_id, dados) {
-    await pool.query(
-        "INSERT INTO produtos (whatsapp_id, nome, preco, estoque) VALUES ($1, $2, $3, $4) ON CONFLICT (nome) DO UPDATE SET preco = $3, estoque = produtos.estoque + EXCLUDED.estoque",
-        [whatsapp_id, dados.item, dados.valor, dados.qtd || 0]
-    );
+    // Insere ou atualiza o preço e soma ao estoque existente
+    const query = `
+        INSERT INTO produtos (whatsapp_id, nome, preco, estoque) 
+        VALUES ($1, $2, $3, $4) 
+        ON CONFLICT (nome) DO UPDATE 
+        SET preco = $3, estoque = produtos.estoque + $4;
+    `;
+    await pool.query(query, [whatsapp_id, dados.item, dados.valor, dados.qtd || 0]);
 }
 
 // --- RELATÓRIOS E ESTATÍSTICAS ---
