@@ -140,6 +140,53 @@ async function gerarCodigoLogin(whatsapp_id) {
     return codigo;
 }
 
+async function consultarEstoque(whatsapp_id) {
+    const res = await pool.query(
+        'SELECT nome, estoque, preco FROM produtos WHERE whatsapp_id = $1 ORDER BY nome', 
+        [whatsapp_id]
+    );
+    
+    if (res.rows.length === 0) {
+        return "📦 Seu estoque está vazio. Comece cadastrando algo! \nEx: 'Cadastrar água por 3 reais'.";
+    }
+
+    let lista = `📦 *Seu Estoque Atual*\n\n`;
+    res.rows.forEach(p => {
+        const alerta = p.estoque <= 5 ? "⚠️" : "✅";
+        lista += `${alerta} *${p.nome.toUpperCase()}*\n💰 Preço: R$ ${p.preco}\n🔢 Qtd: ${p.estoque} un.\n\n`;
+    });
+    return lista;
+}
+
+async function adicionarEstoqueManual(whatsapp_id, dados) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        // 1. Aumenta o estoque na tabela de produtos
+        const res = await client.query(
+            'UPDATE produtos SET estoque = estoque + $1 WHERE whatsapp_id = $2 AND nome = $3 RETURNING id, estoque',
+            [dados.qtd, whatsapp_id, dados.item.toLowerCase()]
+        );
+
+        if (res.rows.length === 0) throw new Error("Produto não encontrado para aumentar estoque.");
+
+        // 2. Grava no histórico a entrada
+        await client.query(
+            'INSERT INTO historico_estoque (produto_id, quantidade, tipo_movimento) VALUES ($1, $2, $3)',
+            [res.rows[0].id, dados.qtd, 'entrada']
+        );
+
+        await client.query('COMMIT');
+        return res.rows[0].estoque;
+    } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+    } finally {
+        client.release();
+    }
+}
+
 // Teste de conexão
 pool.connect((err, client, release) => {
     if (err) return console.error('❌ Erro ao conectar ao Postgres:', err.stack);
@@ -155,5 +202,6 @@ module.exports = {
     registrarMovimentacao,
     consultarEstoque,
     gerarRelatorioCompleto,
-    gerarCodigoLogin
+    gerarCodigoLogin,
+    adicionarEstoqueManual
 };
