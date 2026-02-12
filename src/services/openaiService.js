@@ -15,15 +15,22 @@ async function transcribeAudio(base64Data) {
 }
 
 async function classifyIntent(message) {
-    const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [{
-            role: "system",
-            content: "Classifique a intenção: VENDA, DESPESA, CUSTO, ENTRADA, RELATORIO, ESTOQUE, CADASTRO_PRODUTO, LOGIN. Caso não seja nada disso, responda OUTRO. Responda APENAS a palavra."
-        }, { role: "user", content: message }],
-        temperature: 0,
-    });
-    return response.choices[0].message.content.trim().toUpperCase();
+    console.log("🤖 Chamando OpenAI para classificar...");
+    try {
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{
+                role: "system",
+                content: "Classifique a intenção: VENDA, DESPESA, CUSTO, ENTRADA, RELATORIO, ESTOQUE, CADASTRO_PRODUTO, LOGIN. Responda APENAS a palavra."
+            }, { role: "user", content: message }],
+            temperature: 0,
+        });
+        console.log("✅ OpenAI respondeu com sucesso!");
+        return response.choices[0].message.content.trim().toUpperCase();
+    } catch (error) {
+        console.error("❌ Erro na OpenAI:", error.message);
+        throw error;
+    }
 }
 
 async function extrairDadosFinanceiros(texto) {
