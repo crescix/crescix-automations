@@ -52,6 +52,10 @@ async function cadastrarProduto(whatsapp_id, dados) {
 // --- PROCESSAMENTO DE VENDA COM CATEGORIA ---
 async function processarVendaAutomatica(whatsapp_id, descricao, dados) {
     const client = await pool.connect();
+    const prodRes = await client.query(
+        'SELECT * FROM produtos WHERE whatsapp_id = $1 AND LOWER(TRIM(nome)) = LOWER(TRIM($2))',
+        [whatsapp_id, dados.item] // dados.item já virá limpo da IA
+    );
     try {
         await client.query('BEGIN');
 
