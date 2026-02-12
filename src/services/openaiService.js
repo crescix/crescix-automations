@@ -31,8 +31,32 @@ async function extrairDadosFinanceiros(message) {
     });
     return JSON.parse(response.choices[0].message.content);
 }
+// Função para extrair dados financeiros considerando o rascunho anterior
+async function extrairDadosComContexto(mensagemAtual, rascunhoAnterior) {
+    const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{
+            role: "system",
+            content: `Você é a inteligência da CrescIX. 
+            Sua tarefa é extrair os dados finais (item, valor, qtd) mesclando o que foi dito antes com a nova correção.
+            
+            Exemplo:
+            Rascunho: "Vendi 3 águas" (item: agua, qtd: 3, valor: 0)
+            Mensagem: "Vendi por 3 reais cada e confirme"
+            Resultado JSON: { "item": "agua", "qtd": 3, "valor": 3.00, "confirmado": true }
+            
+            Responda apenas com o objeto JSON.`
+        }, { 
+            role: "user", 
+            content: `Rascunho Original: ${rascunhoAnterior}\nNova Mensagem: ${mensagemAtual}` 
+        }],
+        response_format: { type: "json_object" },
+    });
+    return JSON.parse(response.choices[0].message.content);
+}
 
 module.exports = {
     classifyIntent,
-    extrairDadosFinanceiros
+    extrairDadosFinanceiros,
+    extrairDadosComContexto
 };

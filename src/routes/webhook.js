@@ -36,34 +36,36 @@ router.post("/", async (req, res) => {
 
         // --- BLOCO A: EXECUÇÃO DE CONFIRMAÇÕES PENDENTES ---
         if (status?.startsWith("aguardando_")) {
-            const cleanMsg = userMessage.toLowerCase().trim();
-            
-            if (['sim', 's', 'confirmar', 'pode', 'ok'].includes(cleanMsg)) {
-                const tipo = status.replace("aguardando_", "");
-                const rascunho = await redis.getDraft(remoteJid);
-                const dados = await openai.extrairDadosFinanceiros(rascunho);
+    const rascunho = await redis.getDraft(remoteJid);
+    const tipo = status.replace("aguardando_", "");
+    
+    // 1. Tenta extrair dados mesclando a mensagem atual com o rascunho
+    const dadosFinais = await openai.extrairDadosComContexto(userMessage, rascunho);
 
-                try {
-                    if (tipo === "venda") {
-                        const r = await db.processarVendaAutomatica(remoteJid, rascunho, dados);
-                        await whatsapp.sendMessage(remoteJid, `✅ Venda de R$ ${r.total.toFixed(2)} salva!\n📦 Estoque: ${r.novoEstoque} un. ${r.alerta || ""}`);
-                    } else if (tipo === "entrada" || tipo === "cadastro_produto") {
-                        await db.cadastrarProduto(remoteJid, dados);
-                        await whatsapp.sendMessage(remoteJid, `✅ Estoque de *${dados.item}* atualizado!`);
-                    } else {
-                        await db.registrarMovimentacao(remoteJid, tipo, dados);
-                        await whatsapp.sendMessage(remoteJid, `✅ ${tipo.toUpperCase()} registrado!`);
-                    }
-                } catch (dbError) {
-                    await whatsapp.sendMessage(remoteJid, `⚠️ Erro: ${dbError.message}`);
-                }
-                await redis.clearAll(remoteJid);
-            } else if (['não', 'nao', 'n', 'cancelar'].includes(cleanMsg)) {
-                await whatsapp.sendMessage(remoteJid, "❌ Operação cancelada.");
-                await redis.clearAll(remoteJid);
+    // Se a IA detectar que o usuário quer confirmar (ex: "pode salvar", "ok", "confirmar")
+    if (dadosFinais.confirmado || ['sim', 's', 'ok'].includes(userMessage.toLowerCase())) {
+        try {
+            if (tipo === "venda") {
+                const r = await db.processarVendaAutomatica(remoteJid, rascunho, dadosFinais);
+                await whatsapp.sendMessage(remoteJid, `✅ Venda de *${dadosFinais.item}* salva por R$ ${dadosFinais.valor} cada!`);
+            } else {
+                await db.registrarMovimentacao(remoteJid, tipo, dadosFinais);
+                await whatsapp.sendMessage(remoteJid, `✅ ${tipo.toUpperCase()} registrado!`);
             }
-            return;
+        } catch (e) {
+            await whatsapp.sendMessage(remoteJid, `⚠️ Erro: ${e.message}`);
         }
+        await redis.clearAll(remoteJid);
+    } else if (['nao', 'cancelar'].includes(userMessage.toLowerCase())) {
+        await whatsapp.sendMessage(remoteJid, "❌ Cancelado.");
+        await redis.clearAll(remoteJid);
+    } else {
+        // Se ele apenas deu mais informações sem confirmar, atualiza o rascunho
+        await redis.saveDraft(remoteJid, `${rascunho} + ${userMessage}`);
+        await whatsapp.sendMessage(remoteJid, `🤖 Entendido. Novo resumo:\nItem: ${dadosFinais.item}\nQtd: ${dadosFinais.qtd}\nValor: R$ ${dadosFinais.valor}\n\n**Podemos confirmar agora?**`);
+    }
+    return;
+}
 
         // --- BLOCO B: ENTENDIMENTO DE NOVOS COMANDOS ---
         const intent = await openai.classifyIntent(userMessage);
