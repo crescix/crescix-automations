@@ -15,53 +15,43 @@ async function verificarOuCadastrarUsuario(whatsapp_id, nome) {
     return { user: res.rows[0], isNew: res.rowCount === 1 };
 }
 
-// --- GESTÃO DE PRODUTOS COM HISTÓRICO ---
+// --- GESTÃO DE PRODUTOS ---
 async function cadastrarProduto(whatsapp_id, dados) {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        
-        // 1. Upsert no Produto
         const prodRes = await client.query(`
             INSERT INTO produtos (whatsapp_id, nome, preco, estoque) 
-            VALUES ($1, $2, $3, $4) 
+            VALUES ($1, LOWER(TRIM($2)), $3, $4) 
             ON CONFLICT (whatsapp_id, nome) 
             DO UPDATE SET preco = EXCLUDED.preco, estoque = produtos.estoque + EXCLUDED.estoque
             RETURNING id;
-        `, [whatsapp_id, dados.item.toLowerCase(), dados.valor, dados.qtd || 0]);
+        `, [whatsapp_id, dados.item, dados.valor, dados.qtd || 0]);
 
         const produtoId = prodRes.rows[0].id;
-
-        // 2. Registra no Histórico de Estoque
         if (dados.qtd > 0) {
             await client.query(
                 'INSERT INTO historico_estoque (produto_id, quantidade, tipo_movimento) VALUES ($1, $2, $3)',
                 [produtoId, dados.qtd, 'entrada']
             );
         }
-
         await client.query('COMMIT');
     } catch (e) {
         await client.query('ROLLBACK');
         throw e;
-    } finally {
-        client.release();
-    }
+    } finally { client.release(); }
 }
 
-// --- PROCESSAMENTO DE VENDA COM CATEGORIA ---
+// --- PROCESSAMENTO DE VENDA (Com Normalização) ---
 async function processarVendaAutomatica(whatsapp_id, descricao, dados) {
     const client = await pool.connect();
-    const prodRes = await client.query(
-        'SELECT * FROM produtos WHERE whatsapp_id = $1 AND LOWER(TRIM(nome)) = LOWER(TRIM($2))',
-        [whatsapp_id, dados.item] // dados.item já virá limpo da IA
-    );
     try {
         await client.query('BEGIN');
 
+        // Busca normalizada: ignora espaços e maiúsculas
         const prodRes = await client.query(
-            'SELECT * FROM produtos WHERE whatsapp_id = $1 AND nome = $2',
-            [whatsapp_id, dados.item.toLowerCase()]
+            'SELECT * FROM produtos WHERE whatsapp_id = $1 AND LOWER(TRIM(nome)) = LOWER(TRIM($2))',
+            [whatsapp_id, dados.item]
         );
 
         if (prodRes.rows.length === 0) throw new Error(`Produto "${dados.item}" não cadastrado`);
@@ -69,15 +59,12 @@ async function processarVendaAutomatica(whatsapp_id, descricao, dados) {
         const produto = prodRes.rows[0];
         const total = dados.qtd * (dados.valor || produto.preco);
 
-        // 1. Atualiza estoque
         const novoEstoque = produto.estoque - dados.qtd;
         await client.query('UPDATE produtos SET estoque = $1 WHERE id = $2', [novoEstoque, produto.id]);
 
-        // 2. Busca ID da categoria 'Venda direta'
         const catRes = await client.query("SELECT id FROM categorias WHERE nome = 'Venda direta' LIMIT 1");
         const categoriaId = catRes.rows[0]?.id;
 
-        // 3. Registra a transação e o histórico
         await client.query(
             'INSERT INTO transacoes_crescix (whatsapp_id, tipo, descricao, valor, categoria_id) VALUES ($1, $2, $3, $4, $5)',
             [whatsapp_id, 'venda', descricao, total, categoriaId]
@@ -93,14 +80,20 @@ async function processarVendaAutomatica(whatsapp_id, descricao, dados) {
     } catch (e) {
         await client.query('ROLLBACK');
         throw e;
-    } finally {
-        client.release();
-    }
+    } finally { client.release(); }
 }
 
-// --- MOVIMENTAÇÕES GERAIS COM CATEGORIAS ---
+// --- CONSULTA DE ESTOQUE (Sempre retorna Array) ---
+async function consultarEstoque(whatsapp_id) {
+    const res = await pool.query(
+        'SELECT nome, estoque, preco FROM produtos WHERE whatsapp_id = $1 ORDER BY nome', 
+        [whatsapp_id]
+    );
+    return res.rows; 
+}
+
+// --- OUTRAS FUNÇÕES ---
 async function registrarMovimentacao(whatsapp_id, tipo, dados) {
-    // Tenta encontrar uma categoria que combine com a descrição (ex: 'combustivel')
     const catRes = await pool.query(
         "SELECT id FROM categorias WHERE LOWER(nome) = LOWER($1) OR LOWER(tipo) = LOWER($2) LIMIT 1",
         [dados.item, tipo]
@@ -113,26 +106,14 @@ async function registrarMovimentacao(whatsapp_id, tipo, dados) {
     );
 }
 
-// --- RELATÓRIOS (Ajustado para o novo nome da coluna 'data_pedido') ---
 async function gerarRelatorioCompleto(whatsapp_id) {
     const res = await pool.query(
         "SELECT tipo, SUM(valor) as total FROM transacoes_crescix WHERE whatsapp_id = $1 AND data_pedido >= CURRENT_DATE GROUP BY tipo",
         [whatsapp_id]
     );
-    
     const dados = { venda: 0, despesa: 0, custo: 0, entrada: 0 };
     res.rows.forEach(r => dados[r.tipo] = parseFloat(r.total));
-    
-    return {
-        ...dados,
-        saldo: dados.venda + dados.entrada - (dados.despesa + dados.custo)
-    };
-}
-
-// --- OUTRAS FUNÇÕES ---
-async function consultarEstoque(whatsapp_id) {
-    const res = await pool.query('SELECT nome, estoque FROM produtos WHERE whatsapp_id = $1 ORDER BY nome', [whatsapp_id]);
-    return res.rows;
+    return { ...dados, saldo: dados.venda + dados.entrada - (dados.despesa + dados.custo) };
 }
 
 async function gerarCodigoLogin(whatsapp_id) {
@@ -144,68 +125,13 @@ async function gerarCodigoLogin(whatsapp_id) {
     return codigo;
 }
 
-async function consultarEstoque(whatsapp_id) {
-    const res = await pool.query(
-        'SELECT nome, estoque, preco FROM produtos WHERE whatsapp_id = $1 ORDER BY nome', 
-        [whatsapp_id]
-    );
-    
-    if (res.rows.length === 0) {
-        return "📦 Seu estoque está vazio. Comece cadastrando algo! \nEx: 'Cadastrar água por 3 reais'.";
-    }
-
-    let lista = `📦 *Seu Estoque Atual*\n\n`;
-    res.rows.forEach(p => {
-        const alerta = p.estoque <= 5 ? "⚠️" : "✅";
-        lista += `${alerta} *${p.nome.toUpperCase()}*\n💰 Preço: R$ ${p.preco}\n🔢 Qtd: ${p.estoque} un.\n\n`;
-    });
-    return lista;
-}
-
-async function adicionarEstoqueManual(whatsapp_id, dados) {
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-        
-        // 1. Aumenta o estoque na tabela de produtos
-        const res = await client.query(
-            'UPDATE produtos SET estoque = estoque + $1 WHERE whatsapp_id = $2 AND nome = $3 RETURNING id, estoque',
-            [dados.qtd, whatsapp_id, dados.item.toLowerCase()]
-        );
-
-        if (res.rows.length === 0) throw new Error("Produto não encontrado para aumentar estoque.");
-
-        // 2. Grava no histórico a entrada
-        await client.query(
-            'INSERT INTO historico_estoque (produto_id, quantidade, tipo_movimento) VALUES ($1, $2, $3)',
-            [res.rows[0].id, dados.qtd, 'entrada']
-        );
-
-        await client.query('COMMIT');
-        return res.rows[0].estoque;
-    } catch (e) {
-        await client.query('ROLLBACK');
-        throw e;
-    } finally {
-        client.release();
-    }
-}
-
-// Teste de conexão
-pool.connect((err, client, release) => {
-    if (err) return console.error('❌ Erro ao conectar ao Postgres:', err.stack);
-    console.log('✅ Conexão com o Banco de Dados CrescIX estável!');
-    release();
-});
-
 module.exports = {
-    pool, // Exportado para facilitar queries diretas se necessário
+    pool,
     verificarOuCadastrarUsuario,
     cadastrarProduto,
     processarVendaAutomatica,
     registrarMovimentacao,
     consultarEstoque,
     gerarRelatorioCompleto,
-    gerarCodigoLogin,
-    adicionarEstoqueManual
+    gerarCodigoLogin
 };
