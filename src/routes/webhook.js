@@ -1,44 +1,93 @@
 const express = require('express');
-const router = express.Router(); // Esta linha define o 'router' que estava faltando
+const router = express.Router();
 const whatsapp = require('../services/whatsappService');
 const openai = require('../services/openaiService');
 const redis = require('../services/redisService');
 const db = require('../services/dbService');
 
 router.post("/", async (req, res) => {
-    res.sendStatus(200); // Responde à Evolution primeiro
+    // 1. Responde à Evolution API imediatamente
+    res.sendStatus(200);
 
-    const { event, data } = req.body;
+    const event = req.body.event;
+    const data = req.body.data;
+
+    // 2. Filtro de segurança para mensagens válidas
     if (event !== 'messages.upsert' || !data?.key || data.key.fromMe) return;
 
     const remoteJid = data.key.remoteJid;
-    console.log("📩 Webhook válido recebido da Evolution!");
+    let userMessage = "";
 
     try {
-        // 1. Verifica/Cria usuário (Onde o crash costuma ocorrer)
-        const { user } = await db.verificarOuCadastrarUsuario(remoteJid, data.pushName || "Motorista");
-        console.log(`✅ Usuário identificado: ${user.nome}`);
+        // --- PROCESSAMENTO DE ÁUDIO ---
+        if (data.message?.audioMessage) {
+            const base64Audio = data.message.audioMessage.base64;
+            if (base64Audio) {
+                userMessage = await openai.transcribeAudio(base64Audio);
+            }
+        } else {
+            userMessage = data.message?.conversation || data.message?.extendedTextMessage?.text || "";
+        }
 
-        // 2. Captura a mensagem
-        const userMessage = data.message?.conversation || data.message?.extendedTextMessage?.text || "";
         if (!userMessage) return;
 
-        // 3. Processa Intenção
-        const intent = await openai.classifyIntent(userMessage);
-        console.log(`🤖 IA classificou como: ${intent}`);
+        // --- SISTEMA DE TRAVA (REDIS) ---
+        if (await redis.isLocked(remoteJid)) return;
+        await redis.setLock(remoteJid, true);
 
-        // 4. Envia resposta de teste para confirmar que o TOKEN funciona
-        if (intent === "SAUDACAO" || userMessage.toLowerCase() === "oi") {
-            await whatsapp.sendMessage(remoteJid, "🚀 CrescIX Online! O sistema de controle está pronto.");
-        } else if (["VENDA", "RELATORIO"].includes(intent)) {
-            // ... lógica de venda/relatório
-            await whatsapp.sendMessage(remoteJid, `Recebi seu comando de ${intent}.`);
+        await db.verificarOuCadastrarUsuario(remoteJid, data.pushName || "Motorista");
+        const status = await redis.getStatus(remoteJid);
+
+        // --- LÓGICA DE CONFIRMAÇÃO ---
+        if (status?.startsWith("aguardando_")) {
+            const cleanMsg = userMessage.toLowerCase().trim();
+            
+            if (['sim', 's', 'confirmar', 'ok'].includes(cleanMsg)) {
+                const tipo = status.replace("aguardando_", "");
+                const rascunho = await redis.getDraft(remoteJid);
+                const dados = await openai.extrairDadosFinanceiros(rascunho);
+
+                try {
+                    if (tipo === "venda") {
+                        const r = await db.processarVendaAutomatica(remoteJid, rascunho, dados);
+                        await whatsapp.sendMessage(remoteJid, `✅ Venda de R$ ${r.total.toFixed(2)} salva!\n📦 Estoque atual: ${r.novoEstoque} un.`);
+                    } else {
+                        await db.registrarMovimentacao(remoteJid, tipo, dados);
+                        await whatsapp.sendMessage(remoteJid, `✅ ${tipo.toUpperCase()} registrado!`);
+                    }
+                } catch (dbError) {
+                    await whatsapp.sendMessage(remoteJid, `⚠️ Erro: ${dbError.message}\nUse "Cadastrar produto [nome] por [valor]" primeiro.`);
+                }
+                await redis.clearAll(remoteJid);
+            } else if (['não', 'nao', 'n', 'cancelar'].includes(cleanMsg)) {
+                await whatsapp.sendMessage(remoteJid, "❌ Operação cancelada.");
+                await redis.clearAll(remoteJid);
+            }
+            return;
+        }
+
+        // --- CLASSIFICAÇÃO DE COMANDOS ---
+        const intent = await openai.classifyIntent(userMessage);
+
+        if (["VENDA", "DESPESA", "CUSTO", "ENTRADA", "CADASTRO_PRODUTO"].includes(intent)) {
+            await redis.saveDraft(remoteJid, userMessage);
+            await redis.setStatus(remoteJid, `aguardando_${intent.toLowerCase()}`);
+            await whatsapp.sendMessage(remoteJid, `🤖 Confirma registro de **${intent}**? (Sim/Não)`);
+        } else if (intent === "ESTOQUE") {
+            const itens = await db.consultarEstoque(remoteJid);
+            let lista = `📦 *Seu Estoque*\n\n`;
+            itens.forEach(p => lista += `${p.estoque <= 5 ? "⚠️" : "✅"} ${p.nome}: ${p.estoque} un.\n`);
+            await whatsapp.sendMessage(remoteJid, lista.length > 15 ? lista : "📦 Estoque vazio.");
+        } else if (intent === "RELATORIO") {
+            const r = await db.gerarRelatorioCompleto(remoteJid);
+            await whatsapp.sendMessage(remoteJid, `📊 *Resumo*\n💰 Vendas: R$ ${r.venda}\n⚖️ *Saldo: R$ ${r.saldo.toFixed(2)}*`);
         }
 
     } catch (e) {
-        // Isso impede o reinício e mostra o erro exato no log!
-        console.error("❌ ERRO FATAL CAPTURADO:", e.message);
-        // Opcional: te avisa no WhatsApp que deu erro interno
-        await whatsapp.sendMessage(remoteJid, "⚠️ Ocorreu um erro interno no processamento.");
+        console.error("Erro no processamento:", e.message);
+    } finally {
+        await redis.setLock(remoteJid, false);
     }
 });
+
+module.exports = router;
