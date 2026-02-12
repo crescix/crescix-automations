@@ -99,6 +99,15 @@ async function gerarCodigoLogin(whatsapp_id) {
     return codigo;
 }
 
+// Teste de conexão imediato
+pool.connect((err, client, release) => {
+    if (err) {
+        return console.error('❌ Erro ao conectar ao Postgres:', err.stack);
+    }
+    console.log('✅ Conexão com o Banco de Dados CrescIX estável!');
+    release();
+});
+
 module.exports = {
     verificarOuCadastrarUsuario,
     cadastrarProduto,

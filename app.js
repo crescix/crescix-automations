@@ -16,5 +16,13 @@ app.use('/webhook', webhookRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Erro Não Tratado (Rejection):', reason);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('❌ Erro Fatal (Exception):', error.message);
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Servidor CrescIX rodando na porta ${PORT}`));
