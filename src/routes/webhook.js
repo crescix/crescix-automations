@@ -6,11 +6,18 @@ const redis = require('../services/redisService');
 const db = require('../services/dbService');
 
 router.post("/", async (req, res) => {
-    console.log("📩 Webhook recebido da Evolution!");
+    // 1. Responde logo à Evolution para ela não ficar tentando reenviar
     res.sendStatus(200);
-    const data = req.body.data;
-    if (!data || data.key.fromMe) return;
 
+    const event = req.body.event; // Pega o tipo de evento
+    const data = req.body.data;
+
+    // 2. Só processa se for uma mensagem nova e se os dados existirem
+    if (event !== 'messages.upsert' || !data?.key || data.key.fromMe) {
+        return; 
+    }
+
+    console.log("📩 Mensagem válida recebida!");
     const remoteJid = data.key.remoteJid;
     const pushName = data.pushName || "Motorista";
 
