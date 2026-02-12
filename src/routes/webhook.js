@@ -6,6 +6,7 @@ const redis = require('../services/redisService');
 const db = require('../services/dbService');
 
 router.post("/", async (req, res) => {
+    console.log("📩 Webhook recebido da Evolution!");
     res.sendStatus(200);
     const data = req.body.data;
     if (!data || data.key.fromMe) return;
