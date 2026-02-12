@@ -14,28 +14,30 @@ async function transcribeAudio(base64Data) {
     return transcription.text;
 }
 
+// Classifica a intenção real do usuário
 async function classifyIntent(message) {
     const response = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [{
             role: "system",
-            content: "Você é um validador. Se o usuário confirmar (disser sim, ok, pode ser, confirma), responda APENAS: CONFIRMADO. Se ele negar ou quiser mudar algo, responda: CORRECAO."
+            content: "Classifique a intenção: VENDA (vendi algo), DESPESA (gastei/paguei), CUSTO (comprei estoque), ENTRADA (recebi extra), RELATORIO (quer resumo), CONFIRMADO (disse sim/ok), CORRECAO (disse não/corrigir). Responda APENAS a palavra."
         }, { role: "user", content: message }],
         temperature: 0,
     });
     return response.choices[0].message.content.trim().toUpperCase();
 }
 
-async function extrairDadosVenda(texto) {
+// Extrai dados para qualquer tipo de movimentação
+async function extrairDadosFinanceiros(texto) {
     const response = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [{
             role: "system",
-            content: "Retorne APENAS JSON: { \"item\": string, \"qtd\": number }. Ex: 'vendi 3 águas Water' -> { \"item\": \"água Water\", \"qtd\": 3 }"
+            content: "Extraia o item, valor e quantidade. Responda apenas JSON: { \"item\": string, \"valor\": number, \"qtd\": number }. Ex: 'Gastei 50 com diesel' -> { \"item\": \"diesel\", \"valor\": 50, \"qtd\": 1 }"
         }, { role: "user", content: texto }],
         response_format: { type: "json_object" }
     });
     return JSON.parse(response.choices[0].message.content);
 }
 
-module.exports = { transcribeAudio, classifyIntent, extrairDadosVenda };
+module.exports = { transcribeAudio, classifyIntent, extrairDadosFinanceiros };
