@@ -9,10 +9,10 @@ async function sendMessage(number, text) {
         }, {
             headers: { 'apikey': process.env.WHATSAPP_TOKEN }
         });
+        console.log("✅ Resposta enviada com sucesso!");
     } catch (error) {
-        // Isso vai mostrar no Easypanel o motivo real do erro 401 ou 404
-        console.error("❌ Erro ao enviar mensagem:", error.response?.data || error.message);
+        // Isso vai imprimir o erro exato no log do Easypanel
+        console.error("❌ Erro ao enviar para WhatsApp:", error.response?.data || error.message);
     }
 }
-
 module.exports = { sendMessage };
