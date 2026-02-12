@@ -19,7 +19,7 @@ async function classifyIntent(message) {
         model: "gpt-4o-mini",
         messages: [{
             role: "system",
-            content: "Classifique a intenção: VENDA, DESPESA, CUSTO, ENTRADA, RELATORIO, ESTOQUE, CADASTRO_PRODUTO, LOGIN, CONFIRMADO, CANCELAR. Responda APENAS a palavra."
+            content: "Classifique a intenção: VENDA, DESPESA, CUSTO, ENTRADA, RELATORIO, ESTOQUE, CADASTRO_PRODUTO, LOGIN, SAUDACAO, CONFIRMADO, CANCELAR. Responda APENAS a palavra."
         }, { role: "user", content: message }],
         temperature: 0,
     });

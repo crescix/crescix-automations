@@ -65,7 +65,9 @@ router.post("/", async (req, res) => {
             // 4. Identificação de Intenções (IA)
             const intent = await openai.classifyIntent(userMessage);
 
-            if (["VENDA", "DESPESA", "CUSTO", "ENTRADA", "CADASTRO_PRODUTO"].includes(intent)) {
+            if (intent === "SAUDACAO") {
+                await whatsapp.sendMessage(remoteJid, `Olá, ${pushName}! 👋 Como posso ajudar na sua gestão hoje?`);
+            }else if (["VENDA", "DESPESA", "CUSTO", "ENTRADA", "CADASTRO_PRODUTO"].includes(intent)) {
                 await redis.saveDraft(remoteJid, userMessage);
                 await redis.setStatus(remoteJid, `aguardando_${intent.toLowerCase()}`);
                 await whatsapp.sendMessage(remoteJid, `🤖 Confirma registro de **${intent}**? (Sim/Não)`);
