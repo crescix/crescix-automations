@@ -14,26 +14,24 @@ async function transcribeAudio(base64Data) {
     return transcription.text;
 }
 
-// Classifica a intenção real do usuário
 async function classifyIntent(message) {
     const response = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [{
             role: "system",
-            content: "Classifique a intenção: VENDA (vendi algo), DESPESA (gastei/paguei), CUSTO (comprei estoque), ENTRADA (recebi extra), RELATORIO (quer resumo), CONFIRMADO (disse sim/ok), CORRECAO (disse não/corrigir). Responda APENAS a palavra."
+            content: "Classifique a intenção: VENDA, DESPESA, CUSTO, ENTRADA, RELATORIO, ESTOQUE, CADASTRO_PRODUTO, LOGIN, CONFIRMADO, CANCELAR. Responda APENAS a palavra."
         }, { role: "user", content: message }],
         temperature: 0,
     });
     return response.choices[0].message.content.trim().toUpperCase();
 }
 
-// Extrai dados para qualquer tipo de movimentação
 async function extrairDadosFinanceiros(texto) {
     const response = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [{
             role: "system",
-            content: "Extraia o item, valor e quantidade. Responda apenas JSON: { \"item\": string, \"valor\": number, \"qtd\": number }. Ex: 'Gastei 50 com diesel' -> { \"item\": \"diesel\", \"valor\": 50, \"qtd\": 1 }"
+            content: "Extraia item, valor e quantidade. Responda JSON: { \"item\": string, \"valor\": number, \"qtd\": number }. Ex: '3 águas' -> { \"item\": \"água\", \"valor\": 0, \"qtd\": 3 }"
         }, { role: "user", content: texto }],
         response_format: { type: "json_object" }
     });

@@ -4,7 +4,7 @@ const app = express();
 const webhookRoutes = require('./src/routes/webhook');
 
 app.use(express.json({ limit: '50mb' }));
-app.use('/webhook', webhookRoutes);
+app.use('/api/webhook', webhookRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Servidor CrescIX rodando na porta ${PORT}`));
