@@ -53,7 +53,7 @@ router.post("/", async (req, res) => {
                         await whatsapp.sendMessage(remoteJid, `✅ Venda de R$ ${r.total.toFixed(2)} salva!\n📦 Estoque atual: ${r.novoEstoque} un.`);
                     } else {
                         await db.registrarMovimentacao(remoteJid, tipo, dados);
-                        await whatsapp.sendMessage(remoteJid, `✅ ${tipo.toUpperCase()} registrado!`);
+                        await whatsapp.sendMessage(remoteJid, `✅ ${tipo.toUpperCase()} registrado com sucesso!`);
                     }
                 } catch (dbError) {
                     await whatsapp.sendMessage(remoteJid, `⚠️ Erro: ${dbError.message}\nUse "Cadastrar produto [nome] por [valor]" primeiro.`);

@@ -99,6 +99,15 @@ async function gerarCodigoLogin(whatsapp_id) {
     return codigo;
 }
 
+async function registrarMovimentacao(whatsapp_id, tipo, dados) {
+    const query = `
+        INSERT INTO transacoes_crescix (whatsapp_id, tipo, descricao, valor) 
+        VALUES ($1, $2, $3, $4)
+    `;
+    // O 'dados.item' vem da IA como a descrição do que foi comprado/gasto
+    await pool.query(query, [whatsapp_id, tipo.toLowerCase(), dados.item, dados.valor]);
+}
+
 // Teste de conexão imediato
 pool.connect((err, client, release) => {
     if (err) {
@@ -112,6 +121,7 @@ module.exports = {
     verificarOuCadastrarUsuario,
     cadastrarProduto,
     processarVendaAutomatica,
+    registrarMovimentacao,
     consultarEstoque,
     gerarRelatorioCompleto,
     gerarCodigoLogin
