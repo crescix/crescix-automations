@@ -1,3 +1,10 @@
+const express = require('express');
+const router = express.Router(); // Esta linha define o 'router' que estava faltando
+const whatsapp = require('../services/whatsappService');
+const openai = require('../services/openaiService');
+const redis = require('../services/redisService');
+const db = require('../services/dbService');
+
 router.post("/", async (req, res) => {
     res.sendStatus(200); // Responde à Evolution primeiro
 
