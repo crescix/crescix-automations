@@ -6,23 +6,29 @@ const redis = require('../services/redisService');
 const db = require('../services/dbService');
 
 router.post("/", async (req, res) => {
+    // 1. Responde imediatamente para a Evolution não tentar reenviar a mesma mensagem
     res.sendStatus(200);
 
     const event = req.body.event;
     const data = req.body.data;
 
-    // Filtro de segurança para mensagens válidas
-    if (event !== 'messages.upsert' || !data?.key || data.key.fromMe) return;
+    // 2. Filtro de segurança: ignora se não for mensagem ou se for enviada pelo próprio bot
+    if (event !== 'messages.upsert' || !data?.key || data.key.fromMe) {
+        return;
+    }
 
+    console.log("📩 Webhook válido recebido da Evolution!");
     const remoteJid = data.key.remoteJid;
     let userMessage = "";
 
     try {
         // --- PROCESSAMENTO DE ÁUDIO ---
         if (data.message?.audioMessage) {
+            console.log("🎤 Processando mensagem de áudio...");
             const base64Audio = data.message.audioMessage.base64;
             if (base64Audio) {
                 userMessage = await openai.transcribeAudio(base64Audio);
+                console.log(`📝 Transcrição: "${userMessage}"`);
             }
         } else {
             userMessage = data.message?.conversation || data.message?.extendedTextMessage?.text || "";
@@ -30,9 +36,11 @@ router.post("/", async (req, res) => {
 
         if (!userMessage) return;
 
+        // --- SISTEMA DE TRAVA (REDIS) ---
         if (await redis.isLocked(remoteJid)) return;
         await redis.setLock(remoteJid, true);
 
+        // Garante que o usuário existe no banco
         await db.verificarOuCadastrarUsuario(remoteJid, data.pushName || "Motorista");
         const status = await redis.getStatus(remoteJid);
 
@@ -54,7 +62,8 @@ router.post("/", async (req, res) => {
                         await whatsapp.sendMessage(remoteJid, `✅ ${tipo.toUpperCase()} registrado!`);
                     }
                 } catch (dbError) {
-                    // Avisa o usuário se o produto não existir
+                    // Trata erro de produto não cadastrado
+                    console.error("Erro no DB:", dbError.message);
                     await whatsapp.sendMessage(remoteJid, `⚠️ Erro: ${dbError.message}\nUse "Cadastrar produto [nome] por [valor]" primeiro.`);
                 }
                 await redis.clearAll(remoteJid);
@@ -65,8 +74,9 @@ router.post("/", async (req, res) => {
             return;
         }
 
-        // --- CLASSIFICAÇÃO DE COMANDOS (SEM SAUDAÇÃO) ---
+        // --- CLASSIFICAÇÃO DE COMANDOS ---
         const intent = await openai.classifyIntent(userMessage);
+        console.log(`🤖 Intenção identificada: ${intent}`);
 
         if (["VENDA", "DESPESA", "CUSTO", "ENTRADA", "CADASTRO_PRODUTO"].includes(intent)) {
             await redis.saveDraft(remoteJid, userMessage);
@@ -83,7 +93,7 @@ router.post("/", async (req, res) => {
         }
 
     } catch (e) {
-        console.error("Erro no processamento:", e.message);
+        console.error("❌ Erro fatal no processamento:", e.message);
     } finally {
         await redis.setLock(remoteJid, false);
     }
