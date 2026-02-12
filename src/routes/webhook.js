@@ -12,17 +12,18 @@ router.post("/", async (req, res) => {
     const event = req.body.event;
     const data = req.body.data;
 
-    // 2. Filtro de segurança: ignora se não for mensagem ou se for enviada pelo próprio bot
-    if (event !== 'messages.upsert' || !data?.key || data.key.fromMe) {
-        return;
-    }
+    if (event !== 'messages.upsert' || !data?.key || data.key.fromMe) return;
 
-    console.log("📩 Webhook válido recebido da Evolution!");
     const remoteJid = data.key.remoteJid;
-    let userMessage = "";
+    console.log("📩 Webhook válido recebido da Evolution!");
 
     try {
         // --- PROCESSAMENTO DE ÁUDIO ---
+        if (await redis.isLocked(remoteJid)) return;
+        await redis.setLock(remoteJid, true);
+
+        await db.verificarOuCadastrarUsuario(remoteJid, data.pushName || "Motorista");
+        
         if (data.message?.audioMessage) {
             console.log("🎤 Processando mensagem de áudio...");
             const base64Audio = data.message.audioMessage.base64;
