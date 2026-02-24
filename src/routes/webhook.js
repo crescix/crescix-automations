@@ -71,16 +71,20 @@ router.post("/", async (req, res) => {
         const intent = await openai.classifyIntent(userMessage);
 
         // 1. Comandos de Registro (Exigem Confirmação Detalhada)
-        if (["VENDA", "DESPESA", "CUSTO", "ENTRADA", "CADASTRO_PRODUTO"].includes(intent)) {
-            // Extraímos os dados ANTES de perguntar para mostrar ao usuário
-            const dados = await openai.extrairDadosFinanceiros(userMessage);
-            
-            await redis.saveDraft(remoteJid, userMessage);
-            await redis.setStatus(remoteJid, `aguardando_${intent.toLowerCase()}`);
-            
-            const msgPerg = `🤖 Entendi: **${intent}** de *${dados.item}*\n🔢 Qtd: ${dados.qtd} | 💵 Valor: R$ ${dados.valor}\n\n**Confirma o registro?**`;
-            await whatsapp.sendMessage(remoteJid, msgPerg);
-
+        if (["VENDA", "DESPESA", "CUSTO", "ENTRADA"].includes(intent)) {
+        const dados = await openai.extrairDadosFinanceiros(userMessage);
+        
+        await redis.saveDraft(remoteJid, userMessage);
+        await redis.setStatus(remoteJid, `aguardando_${intent.toLowerCase()}`);
+        
+        // Resposta inteligente que interpreta a fala vaga
+        const msgPerg = `🤖 *Entendi o seu registro!*\n\n` +
+                        `📂 Tipo: *${intent}*\n` +
+                        `📦 Item: ${dados.item.toUpperCase()}\n` +
+                        `💵 Valor: R$ ${dados.valor.toFixed(2)}\n\n` +
+                        `*Confirma o lançamento?* (Sim/Não ou corrija o valor)`;
+        
+        await whatsapp.sendMessage(remoteJid, msgPerg);
         } else if (intent === "ESTOQUE") {
             const msgEstoque = await db.consultarEstoque(remoteJid);
             await whatsapp.sendMessage(remoteJid, msgEstoque);

@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # Banco de Dados local
+  postgres:
+    image: postgres:15
+    container_name: crescix_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: e6700e086b0035dd35d8
+      POSTGRES_DB: crescix
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+
+  # Cache para a Evolution API
+  redis:
+    image: redis:7-alpine
+    container_name: evolution_redis
+    command: redis-server --requirepass 874b88bd133fcdc681dc
+    ports:
+      - "6379:6379"
+
+  # Evolution API rodando localmente
+  evolution-api:
+    image: atendai/evolution-api:latest
+    container_name: evolution_api
+    environment:
+      - AUTHENTICATION_API_KEY=mO33pFz2YRuH9ZMKt369HIhFPrmduQ6E
+      - DATABASE_ENABLED=true
+      - DATABASE_TYPE=postgres # O nome correto da variável é DATABASE_TYPE
+      - DATABASE_CONNECTION_URI=postgresql://postgres:e6700e086b0035dd35d8@postgres:5432/crescix?sslmode=disable
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://default:874b88bd133fcdc681dc@redis:6379
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redis
+      - postgres
+
+  # Seu backend CrescIX
+  crescix-backend:
+    build: .
+    container_name: crescix_backend
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - DB_HOST=postgres
+      - DB_USER=postgres
+      - DB_PASSWORD=e6700e086b0035dd35d8
+      - DB_NAME=crescix
+      - REDIS_URL=redis://default:874b88bd133fcdc681dc@redis:6379
+      - WHATSAPP_API_URL=http://evolution-api:8080
+      - WHATSAPP_TOKEN=mO33pFz2YRuH9ZMKt369HIhFPrmduQ6E
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - ./src:/usr/src/app/src
+    depends_on:
+      - postgres
+      - evolution-api
