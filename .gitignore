@@ -2,7 +2,7 @@
 node_modules/
 jspm_packages/
 
-# Variáveis de ambiente (você já colocou, mas mantenha)
+# Variáveis de ambiente
 .env
 .env.local
 .env.development.local
