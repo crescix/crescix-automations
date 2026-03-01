@@ -1,6 +1,8 @@
 # Usa uma versão leve do Node.js
 FROM node:18-alpine
 
+RUN apk add --no-cache ffmpeg
+
 # Cria o diretório de trabalho dentro do container
 WORKDIR /usr/src/app
 
@@ -17,4 +19,4 @@ COPY . .
 EXPOSE 3000
 
 # Comando para iniciar o servidor
-CMD ["node", "app.js"]
+CMD ["node", "src/index.js"]
